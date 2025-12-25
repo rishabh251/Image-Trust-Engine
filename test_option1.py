@@ -4,7 +4,7 @@ from signals.jpeg import analyze_jpeg
 from signals.frequency import analyze_frequency
 from signals.noise import analyze_noise
 
-IMAGE_PATH = "my_photo1.jpg"   # change if needed
+IMAGE_PATH = "testimages/img9.jpg"   # change if needed
 
 
 def run_option1(image_path):
