@@ -46,7 +46,7 @@ def predict(image_path: str):
 
 if __name__ == "__main__":
     # 👇 PUT YOUR IMAGE HERE
-    IMAGE_PATH = "testimages/img3.jpg"   # change to any image you want
+    IMAGE_PATH = "testimages/img4.jpg"   # change to any image you want
 
     result = predict(IMAGE_PATH)
 
