@@ -1,55 +1,103 @@
 # main.py
-# Image Trust Engine – Final Pipeline
 
-from signals.format_detector import detect_format
-from signals.exif import analyze_exif
-from signals.jpeg import analyze_jpeg
-from signals.frequency import analyze_frequency
+import argparse
+import os
+
+# Import forensic signals
 from signals.noise import analyze_noise
+from signals.frequency import analyze_frequency
+from signals.format_detector import analyze_format
 
-from features.extractor import extract_features
-from models.feature_classifier import FeatureClassifier
-from fusion.decision_engine import fuse_signals
+# Import decision engine
+from fusion.decision_engine import decide_authenticity
+from features.noise_patch_analyzer import analyze_noise_patches
+
+def run_forensic_pipeline(image_path: str) -> dict:
+    """
+    Runs all forensic analyzers on the given image
+    and returns the final authenticity decision.
+    """
+
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"Image not found: {image_path}")
+
+    # -------- Step 1: Collect forensic signals -------- #
+
+    signals = {}
+
+    try:
+        signals["noise"] = analyze_noise_patches(image_path)
+    except Exception as e:
+        signals["noise"] = {
+            "score": 0.0,
+            "confidence": 0.0,
+            "reason": f"Noise analysis failed: {str(e)}"
+        }
+
+    try:
+        signals["frequency"] = analyze_frequency(image_path)
+    except Exception as e:
+        signals["frequency"] = {
+            "score": 0.0,
+            "confidence": 0.0,
+            "reason": f"Frequency analysis failed: {str(e)}"
+        }
+
+    try:
+        signals["format"] = analyze_format(image_path)
+    except Exception as e:
+        signals["format"] = {
+            "score": 0.0,
+            "confidence": 0.0,
+            "reason": f"Format analysis failed: {str(e)}"
+        }
+
+    # -------- Step 2: Decision making -------- #
+
+    decision = decide_authenticity(signals)
+
+    return {
+        "image": image_path,
+        "signals": signals,
+        "decision": decision
+    }
 
 
-def predict(image_path: str):
-    print("\n=== Running Image Trust Engine ===\n")
-
-    # ---------- OPTION 1: Forensic signals ----------
-    format_info = detect_format(image_path)
-
-    exif = analyze_exif(image_path, format_info)
-    jpeg = analyze_jpeg(image_path, format_info)
-    frequency = analyze_frequency(image_path)
-    noise = analyze_noise(image_path)
-
-    # ---------- OPTION 2: Feature-level ML ----------
-    features = extract_features(exif, jpeg, frequency, noise)
-
-    clf = FeatureClassifier()
-    clf.train()   # synthetic training for now
-    ai_prob_ml = clf.predict_proba(features)
-
-    # ---------- OPTION 3: Decision fusion ----------
-    final_decision = fuse_signals(
-        exif_result=exif,
-        jpeg_result=jpeg,
-        frequency_result=frequency,
-        noise_result=noise
+def main():
+    parser = argparse.ArgumentParser(
+        description="AI Image Forensic Authenticity Analyzer"
     )
 
-    # Replace rule-based probability with ML probability
-    final_decision["ai_probability"] = round(ai_prob_ml, 3)
+    parser.add_argument(
+        "--image",
+        type=str,
+        required=True,
+        help="Path to input image"
+    )
 
-    return final_decision
+    args = parser.parse_args()
+
+    result = run_forensic_pipeline(args.image)
+
+    # -------- Step 3: Final user-facing output -------- #
+
+    print("\n========== IMAGE AUTHENTICITY REPORT ==========\n")
+    print(f"Image: {result['image']}\n")
+
+    print("Forensic Signals:")
+    for name, res in result["signals"].items():
+        print(
+            f" - {name.upper():10s} | "
+            f"score={res['score']:.2f} | "
+            f"confidence={res['confidence']:.2f}"
+        )
+
+    print("\nFinal Decision:")
+    print(f" Label      : {result['decision']['label']}")
+    print(f" Confidence : {result['decision']['confidence']}")
+    print(f" Reason     : {result['decision']['reason']}")
+    print("\n=============================================\n")
 
 
 if __name__ == "__main__":
-    # 👇 PUT YOUR IMAGE HERE
-    IMAGE_PATH = "testimages/img4.jpg"   # change to any image you want
-
-    result = predict(IMAGE_PATH)
-
-    print("=== FINAL RESULT ===")
-    for key, value in result.items():
-        print(f"{key}: {value}")
+    main()

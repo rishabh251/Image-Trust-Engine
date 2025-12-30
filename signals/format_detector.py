@@ -2,7 +2,8 @@
 
 from pathlib import Path
 
-# Magic byte signatures for common image formats
+# ---------- EXISTING LOGIC (KEEP IT) ---------- #
+
 MAGIC_BYTES = {
     "jpeg": [b"\xFF\xD8\xFF"],
     "png": [b"\x89PNG\r\n\x1a\n"],
@@ -11,16 +12,8 @@ MAGIC_BYTES = {
 }
 
 
-def detect_format(file_path: str, read_bytes: int = 16) -> dict:
-    """
-    Detect the real image format using file headers (magic bytes),
-    NOT the file extension.
-
-    Returns a dictionary describing format capabilities.
-    """
-
+def detect_format_capabilities(file_path: str, read_bytes: int = 16) -> dict:
     result = {
-        "file_path": str(file_path),
         "extension": None,
         "detected_format": "unknown",
         "exif_supported": False,
@@ -36,7 +29,6 @@ def detect_format(file_path: str, read_bytes: int = 16) -> dict:
         with open(file_path, "rb") as f:
             header = f.read(read_bytes)
 
-        # JPEG
         if any(header.startswith(sig) for sig in MAGIC_BYTES["jpeg"]):
             result.update({
                 "detected_format": "jpeg",
@@ -45,55 +37,79 @@ def detect_format(file_path: str, read_bytes: int = 16) -> dict:
                 "block_artifacts_supported": True,
                 "reason": "JPEG magic bytes detected"
             })
-            return result
 
-        # PNG
-        if any(header.startswith(sig) for sig in MAGIC_BYTES["png"]):
+        elif any(header.startswith(sig) for sig in MAGIC_BYTES["png"]):
             result.update({
                 "detected_format": "png",
-                "exif_supported": False,
-                "jpeg_signals_supported": False,
-                "block_artifacts_supported": False,
                 "reason": "PNG magic bytes detected"
             })
-            return result
 
-        # WEBP (RIFF + WEBP marker)
-        if header.startswith(b"RIFF") and b"WEBP" in header:
+        elif header.startswith(b"RIFF") and b"WEBP" in header:
             result.update({
                 "detected_format": "webp",
-                "exif_supported": False,
-                "jpeg_signals_supported": False,
-                "block_artifacts_supported": False,
                 "reason": "WEBP container detected"
             })
-            return result
 
-        # TIFF
-        if any(header.startswith(sig) for sig in MAGIC_BYTES["tiff"]):
+        elif any(header.startswith(sig) for sig in MAGIC_BYTES["tiff"]):
             result.update({
                 "detected_format": "tiff",
                 "exif_supported": True,
-                "jpeg_signals_supported": False,
-                "block_artifacts_supported": False,
                 "reason": "TIFF magic bytes detected"
             })
-            return result
 
-        # BMP
-        if any(header.startswith(sig) for sig in MAGIC_BYTES["bmp"]):
+        elif any(header.startswith(sig) for sig in MAGIC_BYTES["bmp"]):
             result.update({
                 "detected_format": "bmp",
-                "exif_supported": False,
-                "jpeg_signals_supported": False,
-                "block_artifacts_supported": False,
                 "reason": "BMP magic bytes detected"
             })
-            return result
 
-        result["reason"] = "Unknown or unsupported image format"
+        else:
+            result["reason"] = "Unknown or unsupported image format"
+
         return result
 
     except Exception as e:
         result["reason"] = f"Format detection failed: {str(e)}"
         return result
+
+
+# ---------- FORENSIC SIGNAL (NEW) ---------- #
+
+def analyze_format(image_path: str) -> dict:
+    try:
+        meta = detect_format_capabilities(image_path)
+
+        score = 0.0
+        confidence = 0.5
+        reason = "Image format appears consistent with standard camera pipelines"
+
+        # Extension mismatch
+        if meta["extension"] != meta["detected_format"]:
+            score = 0.4
+            confidence = 0.8
+            reason = "File extension does not match actual image format"
+
+        # WEBP / BMP are uncommon for native cameras
+        elif meta["detected_format"] in {"webp", "bmp"}:
+            score = 0.3
+            confidence = 0.6
+            reason = f"Uncommon image format for camera capture ({meta['detected_format']})"
+
+        # Unknown formats
+        elif meta["detected_format"] == "unknown":
+            score = 0.35
+            confidence = 0.7
+            reason = "Unknown image format detected"
+
+        return {
+            "score": float(score),
+            "confidence": float(confidence),
+            "reason": reason
+        }
+
+    except Exception as e:
+        return {
+            "score": 0.0,
+            "confidence": 0.0,
+            "reason": f"Format analysis failed: {str(e)}"
+        }

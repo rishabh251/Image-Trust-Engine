@@ -1,81 +1,68 @@
 # fusion/decision_engine.py
 
-def fuse_signals(
-    exif_result: dict,
-    jpeg_result: dict,
-    frequency_result: dict,
-    noise_result: dict
-) -> dict:
+def decide_authenticity(signals: dict) -> dict:
     """
-    Fuse Option 1 signals into a final decision.
+    Combine multiple forensic signals to decide image authenticity.
+
+    Args:
+        signals: dict of {signal_name: {score, confidence, reason}}
 
     Returns:
         {
-            "verdict": str,
-            "ai_probability": float,
+            "label": str,
             "confidence": float,
-            "explanation": str
+            "reason": str
         }
     """
 
-    signals = {
-        "exif": exif_result,
-        "jpeg": jpeg_result,
-        "frequency": frequency_result,
-        "noise": noise_result
-    }
+    # -------- Step 1: Weighted evidence accumulation -------- #
 
-    weights = {
-        "exif": 0.2,
-        "jpeg": 0.3,
-        "frequency": 0.25,
-        "noise": 0.25
-    }
-
-    weighted_score = 0.0
-    weight_sum = 0.0
-    explanations = []
+    weighted_sum = 0.0
+    confidence_sum = 0.0
+    contributing_reasons = []
 
     for name, result in signals.items():
-        score = result.get("score")
+        score = result.get("score", 0.0)
+        confidence = result.get("confidence", 0.0)
         reason = result.get("reason", "")
 
-        if score is None:
-            explanations.append(f"{name}: not applicable")
-            continue
+        weighted_sum += score * confidence
+        confidence_sum += confidence
 
-        weighted_score += weights[name] * score
-        weight_sum += weights[name]
-        explanations.append(f"{name}: {reason}")
+        if score > 0.4 and confidence > 0.6:
+            contributing_reasons.append(f"{name}: {reason}")
 
-    # Safety check
-    if weight_sum == 0:
+    if confidence_sum == 0:
         return {
-            "verdict": "Indeterminate",
-            "ai_probability": 0.5,
-            "confidence": 0.2,
-            "explanation": "Insufficient forensic signals available"
+            "label": "UNKNOWN",
+            "confidence": 0.0,
+            "reason": "No reliable forensic signals available"
         }
 
-    final_score = weighted_score / weight_sum
+    normalized_score = weighted_sum / confidence_sum
 
-    # Interpretation logic (VERY IMPORTANT)
-    if final_score < 0.35:
-        verdict = "Likely reprocessed real image"
-        ai_probability = 0.25
-        confidence = 0.7
-    elif final_score < 0.55:
-        verdict = "Indeterminate (reprocessed or AI)"
-        ai_probability = 0.5
-        confidence = 0.5
+    # -------- Step 2: Rule-based decision thresholds -------- #
+
+    if normalized_score >= 0.75:
+        label = "AI_GENERATED"
+    elif 0.45 <= normalized_score < 0.75:
+        label = "AI_EDITED"
     else:
-        verdict = "Likely AI-generated image"
-        ai_probability = 0.75
-        confidence = 0.7
+        label = "REAL"
+
+    # -------- Step 3: Final confidence estimation -------- #
+
+    decision_confidence = min(1.0, normalized_score + 0.15)
+
+    # -------- Step 4: Human-readable reason -------- #
+
+    if contributing_reasons:
+        reason = " | ".join(contributing_reasons[:3])
+    else:
+        reason = "No significant forensic inconsistencies detected"
 
     return {
-        "verdict": verdict,
-        "ai_probability": round(ai_probability, 2),
-        "confidence": round(confidence, 2),
-        "explanation": " | ".join(explanations)
+        "label": label,
+        "confidence": round(decision_confidence, 2),
+        "reason": reason
     }
